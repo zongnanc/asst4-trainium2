@@ -153,7 +153,7 @@ def matrix_transpose(a_tensor):
     #             3 7
     #             4 8
 
-    free_dim = 512
+    free_dim = 4096
 
     # 4096 * 4096, 128 * 512(f), 
 
@@ -174,10 +174,10 @@ def matrix_transpose(a_tensor):
             # transpose and store chunk row m, free dim n to chunk column in sbuf_t_tile
             for p in nl.affine_range(free_dim // tile_dim):
                 # transpose
-                nisa.nc_transpose(dst=psum_tile, data=sbuf_chunk[:, p * tile_dim : (p+1) * tile_dim])
+                psum_tile = nisa.nc_transpose(sbuf_chunk[:, p * tile_dim : (p+1) * tile_dim])
 
                 # move from psum to sbuf_tile
-                nisa.tensor_copy(dst=sbuf_tile, src=psum_tile)
+                sbuf_tile = nisa.tensor_copy(psum_tile)
 
                 # move from sbuf_tile to hbm
                 nisa.dma_copy(src=sbuf_tile, dst=out[n * free_dim + p * tile_dim : n * free_dim + (p+1) * tile_dim, m * tile_dim : (m+1) * tile_dim])
