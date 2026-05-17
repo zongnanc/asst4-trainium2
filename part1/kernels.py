@@ -148,5 +148,42 @@ def matrix_transpose(a_tensor):
     assert M % tile_dim == N % tile_dim == 0, "Matrix dimensions not divisible by tile dimension!"
 
     # TODO: Your implementation here. The only compute instruction you should use is `nisa.nc_transpose`.
+    # 1 2 3 4.    1 5
+    # 5 6 7 8  -> 2 6
+    #             3 7
+    #             4 8
+
+    free_dim = 512
+
+    # 4096 * 4096, 128 * 512(f), 
+
+    for m in nl.affine_range(M // tile_dim):
+        for n in nl.affine_range(N // free_dim):
+            # allocate new sbuf_tile of size 128 * free_dim
+            sbuf_chunk = nl.ndarray((tile_dim, free_dim), dtype=a_tensor.dtype, buffer=nl.sbuf)
+
+            # copy chunck of row m to sbuf
+            nisa.dma_copy(src=a_tensor[m * tile_dim : (m + 1) * tile_dim, n * free_dim : (n + 1) * free_dim], dst=sbuf_chunk)
+
+            # allocate new psum for 128*128 transpose
+            psum_tile = nl.ndarray((tile_dim, tile_dim), dtype=a_tensor.dtype, buffer=nl.psum)
+
+            # allocate a 128*128 in sbuf
+            sbuf_tile = nl.ndarray((tile_dim, tile_dim), dtype=a_tensor.dtype, buffer=nl.sbuf)
+
+            # transpose and store chunk row m, free dim n to chunk column in sbuf_t_tile
+            for p in nl.affine_range(free_dim // tile_dim):
+                # transpose
+                nisa.nc_transpose(dst=psum_tile, data=sbuf_chunk[:, p * tile_dim : (p+1) * tile_dim])
+
+                # move from psum to sbuf_tile
+                nisa.tensor_copy(dst=sbuf_tile, src=psum_tile)
+
+                # move from sbuf_tile to hbm
+                nisa.dma_copy(src=sbuf_tile, dst=out[n * free_dim + p * tile_dim : n * free_dim + (p+1) * tile_dim, m * tile_dim : (m+1) * tile_dim])
+
+
+
+
 
     return out
